@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - cert-namespace.yaml
+  - clusterissuer-selfsigned-prod.yaml
+
+helmCharts:
+  - name: cert-manager
+    repo: https://charts.jetstack.io
+    releaseName: cert-manager
+    namespace: cert-manager
+    version: v1.19.2
+    includeCRDs: true
+    valuesInline:
+      installCRDs: true
+      replicaCount: 1
+      webhook:
+        replicaCount: 1
+      cainjector:
+        replicaCount: 1

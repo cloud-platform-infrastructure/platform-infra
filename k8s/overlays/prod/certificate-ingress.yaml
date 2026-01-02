@@ -1,0 +1,14 @@
+
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ingress-prod-tls
+  namespace: ingress-nginx
+spec:
+  secretName: ingress-prod-tls
+  issuerRef:
+    name: selfsigned-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - application-prod.local

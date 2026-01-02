@@ -1,0 +1,14 @@
+
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ingress-staging-tls
+  namespace: ingress-nginx
+spec:
+  secretName: ingress-staging-tls
+  issuerRef:
+    name: selfsigned-staging
+    kind: ClusterIssuer
+  dnsNames:
+    - application-staging.local
