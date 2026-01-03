@@ -13,7 +13,7 @@ terraform {
 
     workspaces {
       project = "aws-infrastructure"
-      tags = ["repo:infrastructure"]
+      tags    = ["repo:infrastructure"]
     }
   }
 }

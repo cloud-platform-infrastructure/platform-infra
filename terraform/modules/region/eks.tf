@@ -83,13 +83,13 @@ resource "aws_eks_cluster" "this" {
   access_config {
     authentication_mode = "API_AND_CONFIG_MAP"
   }
-  
+
   vpc_config {
-    subnet_ids              = [for s in aws_subnet.private : s.id]
-    security_group_ids      = [aws_security_group.eks_cluster[0].id]
+    subnet_ids         = [for s in aws_subnet.private : s.id]
+    security_group_ids = [aws_security_group.eks_cluster[0].id]
 
     # endpoint_private_access = true
-    endpoint_public_access  = true
+    endpoint_public_access = true
   }
 
   tags = {
