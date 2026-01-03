@@ -37,6 +37,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: CodeLint (terraform fmt)
         run: terraform fmt -check -recursive
@@ -49,17 +50,8 @@ jobs:
           tflint --init
           tflint
 
-      - name: Terraform Cloud Credentials
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-
       - name: Terraform Init (CI)
         run: terraform init -input=false
-
-      - name: Select Terraform workspace (CI)
-        run: terraform workspace select "$TF_WORKSPACE" || terraform workspace new "$TF_WORKSPACE"
 
       - name: Terraform Validate
         run: terraform validate
@@ -100,9 +92,6 @@ jobs:
 
       - name: Terraform Init (CD)
         run: terraform init -input=false
-
-      - name: Select Terraform workspace (CD)
-        run: terraform workspace select "$TF_WORKSPACE" || terraform workspace new "$TF_WORKSPACE"
 
       - name: Terraform Apply (${{ matrix.env }})
         run: terraform apply -auto-approve -input=false
