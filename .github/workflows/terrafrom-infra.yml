@@ -20,6 +20,10 @@ jobs:
     strategy:
       matrix:
         env: [infra-dev, infra-staging, infra-prod]
+    env:
+      TF_WORKSPACE: ${{ matrix.env }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
 
     defaults:
       run:
@@ -52,18 +56,15 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init (CI)
-        env:
-          TF_WORKSPACE: ${{ matrix.env }}
-        run: terraform init -input=false -reconfigure
+        run: terraform init -input=false
+
+      - name: Select Terraform workspace (CI)
+        run: terraform workspace select "$TF_WORKSPACE" || terraform workspace new "$TF_WORKSPACE"
 
       - name: Terraform Validate
-        env:
-          TF_WORKSPACE: ${{ matrix.env }}
         run: terraform validate
 
       - name: Terraform Plan
-        env:
-          TF_WORKSPACE: ${{ matrix.env }}
         run: terraform plan -input=false
 
   terraform-cd:
@@ -78,6 +79,10 @@ jobs:
       matrix:
         # For now we only deploy staging. In the future, add: [infra-dev, infra-prod]
         env: [infra-staging]
+    env:
+      TF_WORKSPACE: ${{ matrix.env }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
 
     defaults:
       run:
@@ -94,11 +99,10 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init (CD)
-        env:
-          TF_WORKSPACE: ${{ matrix.env }}
-        run: terraform init -input=false -reconfigure
+        run: terraform init -input=false
+
+      - name: Select Terraform workspace (CD)
+        run: terraform workspace select "$TF_WORKSPACE" || terraform workspace new "$TF_WORKSPACE"
 
       - name: Terraform Apply (${{ matrix.env }})
-        env:
-          TF_WORKSPACE: ${{ matrix.env }}
         run: terraform apply -auto-approve -input=false
