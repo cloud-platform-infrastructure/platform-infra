@@ -29,7 +29,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Environment Setup (Terraform)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: CodeLint (terraform fmt)
+        run: terraform fmt -check -recursive
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: CodeLint (tflint)
+        run: |
+          tflint --init
+          tflint
+
+      - name: Terraform Cloud Credentials
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
@@ -38,13 +54,17 @@ jobs:
       - name: Terraform Init (CI)
         env:
           TF_WORKSPACE: ${{ matrix.env }}
-        run: terraform init -input=false
+        run: terraform init -input=false -reconfigure
 
       - name: Terraform Validate
+        env:
+          TF_WORKSPACE: ${{ matrix.env }}
         run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan
+        env:
+          TF_WORKSPACE: ${{ matrix.env }}
+        run: terraform plan -input=false
 
   terraform-cd:
     name: Terraform CD (apply)
@@ -76,7 +96,9 @@ jobs:
       - name: Terraform Init (CD)
         env:
           TF_WORKSPACE: ${{ matrix.env }}
-        run: terraform init -input=false
+        run: terraform init -input=false -reconfigure
 
       - name: Terraform Apply (${{ matrix.env }})
-        run: terraform apply -auto-approve
+        env:
+          TF_WORKSPACE: ${{ matrix.env }}
+        run: terraform apply -auto-approve -input=false
