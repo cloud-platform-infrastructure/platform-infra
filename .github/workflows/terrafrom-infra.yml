@@ -17,6 +17,10 @@ jobs:
     name: Terraform CI (validate & plan)
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        env: [infra-dev, infra-staging, infra-prod]
+
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -30,6 +34,9 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Select Terraform workspace (CI)
+        run: terraform workspace select ${{ matrix.env }} || terraform workspace new ${{ matrix.env }}
 
       - name: Terraform Init
         run: terraform init
@@ -50,8 +57,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # For now we only deploy staging. In the future, add: [dev, prod]
-        env: [staging]
+        # For now we only deploy staging. In the future, add: [infra-dev, infra-prod]
+        env: [infra-staging]
 
     defaults:
       run:
@@ -66,6 +73,9 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Select Terraform workspace (CD)
+        run: terraform workspace select ${{ matrix.env }} || terraform workspace new ${{ matrix.env }}
 
       - name: Terraform Apply (${{ matrix.env }})
         run: terraform apply -auto-approve
