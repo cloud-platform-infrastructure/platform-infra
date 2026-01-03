@@ -35,11 +35,11 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Select Terraform workspace (CI)
-        run: terraform workspace select ${{ matrix.env }} || terraform workspace new ${{ matrix.env }}
-
       - name: Terraform Init
         run: terraform init
+
+      - name: Select Terraform workspace (CI)
+        run: terraform workspace select ${{ matrix.env }} || terraform workspace new ${{ matrix.env }}
 
       - name: Terraform Validate
         run: terraform validate
@@ -73,6 +73,9 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        run: terraform init
 
       - name: Select Terraform workspace (CD)
         run: terraform workspace select ${{ matrix.env }} || terraform workspace new ${{ matrix.env }}
