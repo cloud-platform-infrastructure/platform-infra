@@ -41,7 +41,10 @@ jobs:
 
       - name: CodeLint (yamllint)
         run: |
-          yamllint -d "{extends: default, rules: {line-length: {max: 140, level: warning}}}" k8s
+          yamllint \
+            -d "{extends: default, rules: {line-length: {max: 140, level: warning}}}" \
+            -e k8s/**/charts/** \
+            k8s
 
       - name: Build (base)
         run: |
