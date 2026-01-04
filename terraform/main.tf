@@ -19,10 +19,10 @@ module "region" {
   ecr_keep_last_images = var.ecr_keep_last_images
   ecr_repositories     = var.ecr_repositories
 
-  feature_flags        = var.feature_flags
+  feature_flags = var.feature_flags
 
   kubectl_trusted_principals = var.kubectl_trusted_principals
 
-  slack_bot_token   = var.slack_bot_token
-  slack_channel_id  = var.slack_channel_id
+  slack_bot_token  = var.slack_bot_token
+  slack_channel_id = var.slack_channel_id
 }

@@ -17,6 +17,15 @@ jobs:
     name: Terraform CI (validate & plan)
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [infra-dev, infra-staging, infra-prod]
+    env:
+      TF_WORKSPACE: ${{ matrix.env }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+
     defaults:
       run:
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -25,19 +34,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Environment Setup (Terraform)
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Terraform Init
-        run: terraform init
+      - name: CodeLint (terraform fmt)
+        run: terraform fmt -check -recursive
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: CodeLint (tflint)
+        run: |
+          tflint --init
+          tflint
+
+      - name: Terraform Init (CI)
+        run: terraform init -input=false
 
       - name: Terraform Validate
         run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan
+        run: terraform plan -input=false
 
   terraform-cd:
     name: Terraform CD (apply)
@@ -49,8 +70,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # For now we only deploy staging. In the future, add: [dev, prod]
-        env: [staging]
+        # For now we only deploy staging. In the future, add: [infra-dev, infra-prod]
+        env: [infra-staging]
+    env:
+      TF_WORKSPACE: ${{ matrix.env }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
 
     defaults:
       run:
@@ -64,6 +89,10 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init (CD)
+        run: terraform init -input=false
 
       - name: Terraform Apply (${{ matrix.env }})
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -input=false
