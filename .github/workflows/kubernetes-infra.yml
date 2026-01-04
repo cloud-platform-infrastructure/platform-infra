@@ -1,0 +1,237 @@
+name: Kubernetes Infrastructure
+
+on:
+  push:
+    paths:
+      - "k8s/**"
+  pull_request:
+    paths:
+      - "k8s/**"
+  workflow_dispatch: {}
+
+env:
+  AWS_REGION: us-east-1
+  K8S_BASE_DIR: k8s/base
+
+  # Cluster name pattern: slack-enterprise-study-<env>-use1-eks
+  CLUSTER_NAME_PREFIX: slack-enterprise-study
+  CLUSTER_NAME_SUFFIX: use1-eks
+
+jobs:
+  k8s-infra-ci:
+    name: Kubernetes Infra CI (lint + build + schema validation)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v4
+
+      - name: Environment Setup (kubectl + helm)
+        uses: azure/setup-helm@v4
+        with:
+            version: v3.14.4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29.0
+
+      - name: Install yamllint
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install yamllint
+
+      - name: CodeLint (yamllint)
+        run: |
+          yamllint \
+            -d "{
+              extends: default,
+              ignore: 'k8s/**/charts/**',
+              rules: {
+                document-start: disable,
+                empty-lines: disable,
+                new-line-at-end-of-file: disable,
+                line-length: {max: 250, level: warning}
+              }
+            }" \
+            k8s
+
+      - name: Build (base + overlays)
+        run: |
+          set -euo pipefail
+
+          TARGETS=(
+            "${{ env.K8S_BASE_DIR }}"
+            "k8s/overlays/dev"
+            "k8s/overlays/staging"
+            "k8s/overlays/prod"
+          )
+
+          for dir in "${TARGETS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "[skip] Directory not found: $dir"
+              continue
+            fi
+
+            safe_name=$(echo "$dir" | tr '/' '-')
+            out_file="${{ runner.temp }}/${safe_name}.yaml"
+
+            echo "\n=== Rendering: $dir ==="
+            kubectl kustomize "$dir" --enable-helm > "$out_file"
+            echo "Rendered manifest: $out_file"
+          done
+
+      # Schema validation (kubeconform)
+      # Validates generated YAML against Kubernetes schemas
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar -xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Validate schemas (base + overlays)
+        run: |
+          set -euo pipefail
+
+          TARGETS=(
+            "${{ env.K8S_BASE_DIR }}"
+            "k8s/overlays/dev"
+            "k8s/overlays/staging"
+            "k8s/overlays/prod"
+          )
+
+          for dir in "${TARGETS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "[skip] Directory not found: $dir"
+              continue
+            fi
+
+            safe_name=$(echo "$dir" | tr '/' '-')
+            out_file="${{ runner.temp }}/${safe_name}.yaml"
+
+            echo "\n=== kubeconform: $dir ==="
+            kubeconform \
+              -summary \
+              -strict \
+              -ignore-missing-schemas \
+              "$out_file"
+          done
+
+  k8s-infra-cd:
+    name: Kubernetes Infra CD (apply staging)
+    runs-on: ubuntu-latest
+    needs: k8s-infra-ci
+
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # For now we only deploy staging. In the future, add: [dev, prod]
+        env: [staging]
+        include:
+          - env: staging
+            aws_role_kubeconfig_secret: AWS_ROLE_ARN_EKS_KUBECONFIG_STAGING
+            aws_role_kubectl_secret: AWS_ROLE_ARN_EKS_KUBECTL_STAGING
+
+    env:
+      ENV_NAME: ${{ matrix.env }}
+      CLUSTER_NAME: ${{ format('slack-enterprise-study-{0}-use1-eks', matrix.env) }}
+      K8S_OVERLAY_DIR: ${{ format('k8s/overlays/{0}', matrix.env) }}
+
+    steps:
+      - name: Code Checkout
+        uses: actions/checkout@v4
+
+      - name: Environment Setup (kubectl + helm)
+        uses: azure/setup-helm@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.29.0
+
+      - name: Configure AWS credentials (OIDC – kubeconfig role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets[matrix.aws_role_kubeconfig_secret] }}
+
+      - name: Update kubeconfig (EKS)
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ env.CLUSTER_NAME }}" \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Configure AWS credentials (OIDC – kubectl role)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets[matrix.aws_role_kubectl_secret] }}
+
+      - name: Cluster sanity check
+        run: |
+          kubectl version --client
+          kubectl get nodes
+
+      # Apply base (Ingress + External Secrets)
+      - name: Apply infra base (Ingress + External Secrets)
+        run: |
+          kubectl kustomize "${{ env.K8S_BASE_DIR }}" --enable-helm | kubectl apply -f -
+
+      # Wait CRDs exist (otherwise "no matches for kind" happens)
+      - name: Wait for External Secrets CRDs
+        run: |
+          kubectl wait --for=condition=Established --timeout=180s crd/clustersecretstores.external-secrets.io
+          kubectl wait --for=condition=Established --timeout=180s crd/secretstores.external-secrets.io
+          kubectl wait --for=condition=Established --timeout=180s crd/externalsecrets.external-secrets.io
+
+      # Wait webhook endpoints (otherwise webhook internal error: "no endpoints available")
+      - name: Wait for External Secrets webhook ready
+        run: |
+          kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=180s
+          kubectl -n external-secrets wait --for=condition=Available --timeout=180s deploy/external-secrets-webhook
+
+      - name: Apply ClusterSecretStore (aws-secrets)
+        run: |
+          kubectl apply -f "${{ env.K8S_BASE_DIR }}/clustersecretstore-aws-secrets.yaml"
+          kubectl get clustersecretstore aws-secrets -o wide
+
+      # APPLY STAGING OVERLAY (cert-manager)
+      - name: Apply infra overlay (cert-manager)
+        run: |
+          kubectl kustomize "${{ env.K8S_OVERLAY_DIR }}" --enable-helm | kubectl apply -f -
+
+      - name: Wait for cert-manager CRDs
+        run: |
+          kubectl wait --for=condition=Established --timeout=180s crd/clusterissuers.cert-manager.io
+
+      - name: Wait for cert-manager webhook ready
+        run: |
+          kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+          kubectl -n cert-manager wait --for=condition=Available --timeout=180s deploy/cert-manager-webhook
+
+      - name: Apply ClusterIssuer (selfsigned)
+        run: |
+          kubectl apply -f "${{ env.K8S_OVERLAY_DIR }}/clusterissuer-selfsigned-${{ env.ENV_NAME }}.yaml"
+          kubectl get clusterissuer selfsigned -o wide
+
+      - name: Rollout status (ingress-nginx)
+        run: |
+          kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=180s
+
+      - name: Rollout status (external-secrets)
+        run: |
+          kubectl -n external-secrets rollout status deploy/external-secrets --timeout=180s
+          kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=180s
+
+      - name: Rollout status (cert-manager)
+        run: |
+          kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
+          kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+          kubectl -n cert-manager rollout status deploy/cert-manager-cainjector --timeout=180s
