@@ -150,13 +150,15 @@ jobs:
 
       - name: Environment Setup (kubectl + helm)
         uses: azure/setup-helm@v4
+        with:
+            version: v3.14.4
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: v1.29.0
 
-      - name: Configure AWS credentials (OIDC – kubeconfig role)
+      - name: Configure AWS credentials (OIDC - kubeconfig role)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
@@ -168,7 +170,7 @@ jobs:
             --name "${{ env.CLUSTER_NAME }}" \
             --region "${{ env.AWS_REGION }}"
 
-      - name: Configure AWS credentials (OIDC – kubectl role)
+      - name: Configure AWS credentials (OIDC - kubectl role)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
