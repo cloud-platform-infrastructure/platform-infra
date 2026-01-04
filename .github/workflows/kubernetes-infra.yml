@@ -28,6 +28,8 @@ jobs:
 
       - name: Environment Setup (kubectl + helm)
         uses: azure/setup-helm@v4
+        with:
+            version: v3.14.4
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
