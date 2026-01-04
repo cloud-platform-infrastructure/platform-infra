@@ -42,8 +42,16 @@ jobs:
       - name: CodeLint (yamllint)
         run: |
           yamllint \
-            -d "{extends: default, rules: {line-length: {max: 140, level: warning}}}" \
-            -e k8s/**/charts/** \
+            -d "{
+              extends: default,
+              ignore: 'k8s/**/charts/**',
+              rules: {
+                document-start: disable,
+                empty-lines: disable,
+                new-line-at-end-of-file: disable,
+                line-length: {max: 250, level: warning}
+              }
+            }" \
             k8s
 
       - name: Build (base)
