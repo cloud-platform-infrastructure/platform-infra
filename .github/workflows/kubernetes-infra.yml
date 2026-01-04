@@ -54,9 +54,30 @@ jobs:
             }" \
             k8s
 
-      - name: Build (base)
+      - name: Build (base + overlays)
         run: |
-          kubectl kustomize "${{ env.K8S_BASE_DIR }}" --enable-helm > /tmp-base.yaml
+          set -euo pipefail
+
+          TARGETS=(
+            "${{ env.K8S_BASE_DIR }}"
+            "k8s/overlays/dev"
+            "k8s/overlays/staging"
+            "k8s/overlays/prod"
+          )
+
+          for dir in "${TARGETS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "[skip] Directory not found: $dir"
+              continue
+            fi
+
+            safe_name=$(echo "$dir" | tr '/' '-')
+            out_file="${{ runner.temp }}/${safe_name}.yaml"
+
+            echo "\n=== Rendering: $dir ==="
+            kubectl kustomize "$dir" --enable-helm > "$out_file"
+            echo "Rendered manifest: $out_file"
+          done
 
       # Schema validation (kubeconform)
       # Validates generated YAML against Kubernetes schemas
@@ -67,13 +88,33 @@ jobs:
           sudo mv kubeconform /usr/local/bin/kubeconform
           kubeconform -v
 
-      - name: Validate schemas (base)
+      - name: Validate schemas (base + overlays)
         run: |
-          kubeconform \
-            -summary \
-            -strict \
-            -ignore-missing-schemas \
-            /tmp-base.yaml
+          set -euo pipefail
+
+          TARGETS=(
+            "${{ env.K8S_BASE_DIR }}"
+            "k8s/overlays/dev"
+            "k8s/overlays/staging"
+            "k8s/overlays/prod"
+          )
+
+          for dir in "${TARGETS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "[skip] Directory not found: $dir"
+              continue
+            fi
+
+            safe_name=$(echo "$dir" | tr '/' '-')
+            out_file="${{ runner.temp }}/${safe_name}.yaml"
+
+            echo "\n=== kubeconform: $dir ==="
+            kubeconform \
+              -summary \
+              -strict \
+              -ignore-missing-schemas \
+              "$out_file"
+          done
 
   k8s-infra-cd:
     name: Kubernetes Infra CD (apply staging)
