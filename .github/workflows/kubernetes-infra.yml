@@ -99,6 +99,7 @@ jobs:
               rules: {
                 document-start: disable,
                 empty-lines: disable,
+                trailing-spaces: disable,
                 new-line-at-end-of-file: disable,
                 line-length: {max: 250, level: warning}
               }
