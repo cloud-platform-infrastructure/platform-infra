@@ -50,8 +50,8 @@ data "aws_iam_policy_document" "kubectl_admin_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:cloud-platform-infrastructure/platform-infra:ref:refs/heads/main", 
-                   "repo:cloud-platform-infrastructure/deploy-workflows:ref:refs/heads/main"]
+      values = ["repo:cloud-platform-infrastructure/platform-infra:ref:refs/heads/main",
+      "repo:cloud-platform-infrastructure/deploy-workflows:ref:refs/heads/main"]
     }
   }
 }
