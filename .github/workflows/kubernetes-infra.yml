@@ -9,9 +9,44 @@ on:
       - "k8s/**"
   workflow_dispatch: {}
 
+  # Allows other repositories to reuse the CI portion of this workflow
+  workflow_call:
+    inputs:
+      k8s_root:
+        description: "Root directory that contains Kubernetes manifests"
+        required: false
+        type: string
+        default: "k8s"
+      k8s_base_dir:
+        description: "Kustomize base directory"
+        required: false
+        type: string
+        default: "k8s/base"
+      k8s_overlay_dirs:
+        description: "Whitespace-separated list of overlay directories to render/validate"
+        required: false
+        type: string
+        default: "k8s/overlays/dev k8s/overlays/staging k8s/overlays/prod"
+      yamllint_ignore:
+        description: "yamllint ignore glob"
+        required: false
+        type: string
+        default: "k8s/**/charts/**"
+      helm_version:
+        description: "Helm version used by kustomize --enable-helm"
+        required: false
+        type: string
+        default: "v3.14.4"
+      kubectl_version:
+        description: "kubectl version"
+        required: false
+        type: string
+        default: "v1.29.0"
+
 env:
   AWS_REGION: us-east-1
   K8S_BASE_DIR: k8s/base
+  K8S_OVERLAY_DIRS: "k8s/overlays/dev k8s/overlays/staging k8s/overlays/prod"
 
   # Cluster name pattern: slack-enterprise-study-<env>-use1-eks
   CLUSTER_NAME_PREFIX: slack-enterprise-study
@@ -29,12 +64,19 @@ jobs:
       - name: Environment Setup (kubectl + helm)
         uses: azure/setup-helm@v4
         with:
-            version: v3.14.4
+          version: ${{ github.event_name == 'workflow_call' && inputs.helm_version || 'v3.14.4' }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
-          version: v1.29.0
+          version: ${{ github.event_name == 'workflow_call' && inputs.kubectl_version || 'v1.29.0' }}
+
+      - name: Override defaults (workflow_call inputs)
+        if: github.event_name == 'workflow_call'
+        run: |
+          echo "K8S_BASE_DIR=${{ inputs.k8s_base_dir }}" >> "$GITHUB_ENV"
+          echo "K8S_OVERLAY_DIRS=${{ inputs.k8s_overlay_dirs }}" >> "$GITHUB_ENV"
+          echo "YAMLLINT_IGNORE=${{ inputs.yamllint_ignore }}" >> "$GITHUB_ENV"
 
       - name: Install yamllint
         run: |
@@ -43,10 +85,17 @@ jobs:
 
       - name: CodeLint (yamllint)
         run: |
+          set -euo pipefail
+
+          ROOT_DIR="k8s"
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            ROOT_DIR="${{ inputs.k8s_root }}"
+          fi
+
           yamllint \
             -d "{
               extends: default,
-              ignore: 'k8s/**/charts/**',
+              ignore: '${YAMLLINT_IGNORE:-k8s/**/charts/**}',
               rules: {
                 document-start: disable,
                 empty-lines: disable,
@@ -54,18 +103,17 @@ jobs:
                 line-length: {max: 250, level: warning}
               }
             }" \
-            k8s
+            "$ROOT_DIR"
 
       - name: Build (base + overlays)
         run: |
           set -euo pipefail
 
-          TARGETS=(
-            "${{ env.K8S_BASE_DIR }}"
-            "k8s/overlays/dev"
-            "k8s/overlays/staging"
-            "k8s/overlays/prod"
-          )
+          TARGETS=("${K8S_BASE_DIR}")
+          if [ -n "${K8S_OVERLAY_DIRS:-}" ]; then
+            # shellcheck disable=SC2206
+            TARGETS+=( ${K8S_OVERLAY_DIRS} )
+          fi
 
           for dir in "${TARGETS[@]}"; do
             if [ ! -d "$dir" ]; then
@@ -94,12 +142,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          TARGETS=(
-            "${{ env.K8S_BASE_DIR }}"
-            "k8s/overlays/dev"
-            "k8s/overlays/staging"
-            "k8s/overlays/prod"
-          )
+          TARGETS=("${K8S_BASE_DIR}")
+          if [ -n "${K8S_OVERLAY_DIRS:-}" ]; then
+            # shellcheck disable=SC2206
+            TARGETS+=( ${K8S_OVERLAY_DIRS} )
+          fi
 
           for dir in "${TARGETS[@]}"; do
             if [ ! -d "$dir" ]; then
@@ -123,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: k8s-infra-ci
 
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_call'
 
     permissions:
       id-token: write
@@ -151,7 +198,7 @@ jobs:
       - name: Environment Setup (kubectl + helm)
         uses: azure/setup-helm@v4
         with:
-            version: v3.14.4
+          version: v3.14.4
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
