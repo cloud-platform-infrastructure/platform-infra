@@ -14,16 +14,44 @@ locals {
 data "aws_iam_policy_document" "kubectl_admin_trust" {
   count = local.enable_eks ? 1 : 0
 
+  # Local / human access (AWS principals)
   statement {
-    sid    = "AllowTrustedPrincipalsToAssumeKubectlRole"
+    sid    = "AllowLocalUserAssumeRole"
     effect = "Allow"
 
     principals {
-      type        = "AWS"
-      identifiers = var.kubectl_trusted_principals
+      type = "AWS"
+      identifiers = distinct(concat(
+        var.kubectl_trusted_principals,
+      ))
     }
 
     actions = ["sts:AssumeRole"]
+  }
+
+  # GitHub Actions OIDC access (web identity)
+  statement {
+    sid    = "AllowGitHubActionsOIDC"
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::765949264044:oidc-provider/token.actions.githubusercontent.com"]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:cloud-platform-infrastructure/platform-infra:ref:refs/heads/main"]
+    }
   }
 }
 
