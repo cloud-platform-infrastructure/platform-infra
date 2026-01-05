@@ -279,11 +279,11 @@ resource "aws_eks_pod_identity_association" "external_secrets" {
   ]
 }
 
-data "aws_iam_policy_document" "aws_cli_debug_pod_identity_trust" {
+data "aws_iam_policy_document" "aws_cli_pod_identity_trust" {
   count = local.enable_aws_cli_pod_identity ? 1 : 0
 
   statement {
-    sid    = "AllowEksAuthToAssumeRoleForAwsCliDebug"
+    sid    = "AllowEksAuthToAssumeRoleForAwsCli"
     effect = "Allow"
 
     principals {
@@ -310,21 +310,21 @@ data "aws_iam_policy_document" "aws_cli_debug_pod_identity_trust" {
   }
 }
 
-resource "aws_iam_role" "aws_cli_debug_pod_identity" {
+resource "aws_iam_role" "aws_cli_pod_identity" {
   count = local.enable_aws_cli_pod_identity ? 1 : 0
 
-  name               = "${var.project_name}-${var.environment}-aws-cli-debug-pod-identity"
-  assume_role_policy = data.aws_iam_policy_document.aws_cli_debug_pod_identity_trust[0].json
+  name               = "${var.project_name}-${var.environment}-aws-cli-pod-identity"
+  assume_role_policy = data.aws_iam_policy_document.aws_cli_pod_identity_trust[0].json
 
   tags = {
     Project     = var.project_name
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Purpose     = "EKS-Pod-Identity-AWS-CLI-Debug"
+    Purpose     = "EKS-Pod-Identity-AWS-CLI"
   }
 }
 
-data "aws_iam_policy_document" "aws_cli_debug_access" {
+data "aws_iam_policy_document" "aws_cli_access" {
   count = local.enable_aws_cli_pod_identity ? 1 : 0
 
   statement {
@@ -382,27 +382,60 @@ data "aws_iam_policy_document" "aws_cli_debug_access" {
 
     resources = ["*"]
   }
+
+  statement {
+    sid    = "S3BucketFullManagement"
+    effect = "Allow"
+
+    actions = [
+      "s3:CreateBucket",
+      "s3:DeleteBucket",
+      "s3:ListBucket",
+      "s3:GetBucketLocation",
+      "s3:GetBucketPolicy",
+      "s3:PutBucketPolicy",
+      "s3:DeleteBucketPolicy",
+      "s3:GetBucketAcl",
+      "s3:PutBucketAcl",
+      "s3:GetBucketVersioning",
+      "s3:PutBucketVersioning",
+      "s3:GetBucketTagging",
+      "s3:PutBucketTagging",
+
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:DeleteObject",
+      "s3:DeleteObjectVersion",
+      "s3:ListMultipartUploadParts",
+      "s3:AbortMultipartUpload"
+    ]
+
+    resources = [
+      "arn:aws:s3:::*",
+      "arn:aws:s3:::*/*"
+    ]
+  }
 }
 
-resource "aws_iam_role_policy" "aws_cli_debug_access" {
+resource "aws_iam_role_policy" "aws_cli_access" {
   count = local.enable_aws_cli_pod_identity ? 1 : 0
 
-  name   = "${var.project_name}-${var.environment}-aws-cli-debug-access"
-  role   = aws_iam_role.aws_cli_debug_pod_identity[0].name
-  policy = data.aws_iam_policy_document.aws_cli_debug_access[0].json
+  name   = "${var.project_name}-${var.environment}-aws-cli-access"
+  role   = aws_iam_role.aws_cli_pod_identity[0].name
+  policy = data.aws_iam_policy_document.aws_cli_access[0].json
 }
 
 # Associate (cluster + namespace + serviceAccount) -> IAM role
-resource "aws_eks_pod_identity_association" "aws_cli_debug" {
+resource "aws_eks_pod_identity_association" "aws_cli" {
   count = local.enable_aws_cli_pod_identity ? 1 : 0
 
   cluster_name    = aws_eks_cluster.this[0].name
   namespace       = local.aws_cli_namespace
   service_account = local.aws_cli_service_account
-  role_arn        = aws_iam_role.aws_cli_debug_pod_identity[0].arn
+  role_arn        = aws_iam_role.aws_cli_pod_identity[0].arn
 
   depends_on = [
     aws_eks_addon.pod_identity_agent,
-    aws_iam_role_policy.aws_cli_debug_access,
+    aws_iam_role_policy.aws_cli_access,
   ]
 }
