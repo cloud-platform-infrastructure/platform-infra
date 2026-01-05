@@ -7,6 +7,11 @@ locals {
   external_secrets_namespace       = "external-secrets"
   external_secrets_service_account = "external-secrets"
 
+  aws_cli_namespace       = "aws-cli-${var.environment}"
+  aws_cli_service_account = "aws-cli"
+
+  enable_aws_cli_pod_identity = local.enable_eks
+
   # ESO only needs EKS + Pod Identity Agent; it reads from Secrets Manager
   enable_external_secrets_pod_identity = local.enable_eks
 }
@@ -271,5 +276,133 @@ resource "aws_eks_pod_identity_association" "external_secrets" {
   depends_on = [
     aws_eks_addon.pod_identity_agent,
     aws_iam_role_policy.external_secrets_access,
+  ]
+}
+
+data "aws_iam_policy_document" "aws_cli_debug_pod_identity_trust" {
+  count = local.enable_aws_cli_pod_identity ? 1 : 0
+
+  statement {
+    sid    = "AllowEksAuthToAssumeRoleForAwsCliDebug"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["pods.eks.amazonaws.com"]
+    }
+
+    actions = [
+      "sts:AssumeRole",
+      "sts:TagSession",
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/kubernetes-namespace"
+      values   = [local.aws_cli_namespace]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/kubernetes-service-account"
+      values   = [local.aws_cli_service_account]
+    }
+  }
+}
+
+resource "aws_iam_role" "aws_cli_debug_pod_identity" {
+  count = local.enable_aws_cli_pod_identity ? 1 : 0
+
+  name               = "${var.project_name}-${var.environment}-aws-cli-debug-pod-identity"
+  assume_role_policy = data.aws_iam_policy_document.aws_cli_debug_pod_identity_trust[0].json
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+    Purpose     = "EKS-Pod-Identity-AWS-CLI-Debug"
+  }
+}
+
+data "aws_iam_policy_document" "aws_cli_debug_access" {
+  count = local.enable_aws_cli_pod_identity ? 1 : 0
+
+  statement {
+    sid    = "StsIdentity"
+    effect = "Allow"
+
+    actions = [
+      "sts:GetCallerIdentity",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "SecretsManagerRead"
+    effect = "Allow"
+
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:ListSecrets",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "EcrReadAndAuth"
+    effect = "Allow"
+
+    actions = [
+      "ecr:GetAuthorizationToken",
+      "ecr:DescribeRepositories",
+      "ecr:DescribeImages",
+      "ecr:ListImages",
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "DynamoDbReadAndQuery"
+    effect = "Allow"
+
+    actions = [
+      "dynamodb:ListTables",
+      "dynamodb:DescribeTable",
+      "dynamodb:GetItem",
+      "dynamodb:BatchGetItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:ExecuteStatement",
+      "dynamodb:PartiQLSelect",
+    ]
+
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "aws_cli_debug_access" {
+  count = local.enable_aws_cli_pod_identity ? 1 : 0
+
+  name   = "${var.project_name}-${var.environment}-aws-cli-debug-access"
+  role   = aws_iam_role.aws_cli_debug_pod_identity[0].name
+  policy = data.aws_iam_policy_document.aws_cli_debug_access[0].json
+}
+
+# Associate (cluster + namespace + serviceAccount) -> IAM role
+resource "aws_eks_pod_identity_association" "aws_cli_debug" {
+  count = local.enable_aws_cli_pod_identity ? 1 : 0
+
+  cluster_name    = aws_eks_cluster.this[0].name
+  namespace       = local.aws_cli_namespace
+  service_account = local.aws_cli_service_account
+  role_arn        = aws_iam_role.aws_cli_debug_pod_identity[0].arn
+
+  depends_on = [
+    aws_eks_addon.pod_identity_agent,
+    aws_iam_role_policy.aws_cli_debug_access,
   ]
 }
