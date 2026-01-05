@@ -9,3 +9,4 @@ test 8
 ---
 test with front
 test 1
+test 2
