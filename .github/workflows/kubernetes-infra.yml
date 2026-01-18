@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "k8s/**"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "k8s/**"
-  workflow_dispatch: {}
+      - ".github/workflows/**"
+  workflow_dispatch:
 
   # Allows other repositories to reuse the CI portion of this workflow
   workflow_call:
@@ -169,9 +171,12 @@ jobs:
   k8s-infra-cd:
     name: Kubernetes Infra CD (apply staging)
     runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
     needs: k8s-infra-ci
 
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'cloud-platform-infrastructure/platform-infra'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'cloud-platform-infrastructure/platform-infra') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == 'cloud-platform-infrastructure/platform-infra')
 
     permissions:
       id-token: write
