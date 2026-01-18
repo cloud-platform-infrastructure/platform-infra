@@ -64,6 +64,7 @@ jobs:
   terraform-cd:
     name: Terraform CD (apply)
     runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
     needs: terraform-ci
 
     if: github.ref == 'refs/heads/main'
