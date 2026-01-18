@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - "k8s/**"
-  workflow_dispatch: {}
+  workflow_dispatch:
 
   # Allows other repositories to reuse the CI portion of this workflow
   workflow_call:
@@ -169,6 +169,7 @@ jobs:
   k8s-infra-cd:
     name: Kubernetes Infra CD (apply staging)
     runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
     needs: k8s-infra-ci
 
     if: |
