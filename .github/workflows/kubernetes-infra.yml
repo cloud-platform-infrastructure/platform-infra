@@ -4,9 +4,11 @@ on:
   push:
     paths:
       - "k8s/**"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "k8s/**"
+      - ".github/workflows/**"
   workflow_dispatch:
 
   # Allows other repositories to reuse the CI portion of this workflow
